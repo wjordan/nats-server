@@ -816,9 +816,11 @@ func (s *Server) createGateway(cfg *gatewayCfg, url *url.URL, conn net.Conn) {
 		c.Noticef("Processing inbound gateway connection")
 		// Check if TLS is required for inbound GW connections.
 		tlsRequired = opts.Gateway.TLSConfig != nil
-		// We expect a CONNECT from the accepted connection.
-		c.setAuthTimer(secondsToDuration(opts.Gateway.AuthTimeout))
 	}
+
+	// We expect a CONNECT from the accepted inbound connection
+	// or an INFO from the outbound connection.
+	c.setAuthTimer(secondsToDuration(opts.Gateway.AuthTimeout))
 
 	// Check for TLS
 	if tlsRequired {
@@ -1112,6 +1114,7 @@ func (c *client) processGatewayInfo(info *Info) {
 				s.removeFromTempClients(cid)
 				// Set the Ping timer after sending connect and info.
 				c.mu.Lock()
+				c.clearAuthTimer()
 				c.setFirstPingTimer()
 				c.mu.Unlock()
 			} else {
