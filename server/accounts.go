@@ -902,6 +902,8 @@ func (a *Account) addClient(c *client) int {
 	}
 	if c.kind != CLIENT && c.kind != LEAF {
 		a.sysclients++
+		a.mu.Unlock()
+		return n
 	} else if c.kind == LEAF {
 		a.nleafs++
 	}
@@ -986,6 +988,8 @@ func (a *Account) removeClient(c *client) int {
 	}
 	if c.kind != CLIENT && c.kind != LEAF {
 		a.sysclients--
+		a.mu.Unlock()
+		return n
 	} else if c.kind == LEAF {
 		a.nleafs--
 		// Need to do cluster accounting here.
