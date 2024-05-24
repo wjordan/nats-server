@@ -134,6 +134,7 @@ type internal struct {
 	shash          string
 	inboxPre       string
 	remoteStatsSub *subscription
+	lastStatsz     time.Time
 }
 
 // ServerStatsMsg is sent periodically with stats updates.
@@ -807,6 +808,10 @@ func (s *Server) sendStatsz(subj string) {
 	var m ServerStatsMsg
 	s.updateServerUsage(&m.Stats)
 
+	if s.limitStatsz(subj) {
+		return
+	}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -946,6 +951,35 @@ func (s *Server) sendStatsz(subj string) {
 	}
 	// Send message.
 	s.sendInternalMsg(subj, _EMPTY_, &m.Server, &m)
+}
+
+// Limit updates to the heartbeat interval, max one second.
+func (s *Server) limitStatsz(subj string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.sys == nil {
+		return true
+	}
+
+	// Only limit the normal broadcast subject.
+	if subj != fmt.Sprintf(serverStatsSubj, s.ID()) {
+		return false
+	}
+
+	interval := time.Second
+	if s.sys.cstatsz < interval {
+		interval = s.sys.cstatsz
+	}
+	if time.Since(s.sys.lastStatsz) < interval {
+		// Reschedule heartbeat for the next interval.
+		if s.sys.stmr != nil {
+			s.sys.stmr.Reset(time.Until(s.sys.lastStatsz.Add(interval)))
+		}
+		return true
+	}
+	s.sys.lastStatsz = time.Now()
+	return false
 }
 
 // Send out our statz update.
@@ -1868,6 +1902,10 @@ func (s *Server) statszReq(sub *subscription, c *client, _ *Account, subject, re
 	// No reply is a signal that we should use our normal broadcast subject.
 	if reply == _EMPTY_ {
 		reply = fmt.Sprintf(serverStatsSubj, s.info.ID)
+		// Reset rate limit for the next broadcast.
+		s.mu.Lock()
+		s.sys.lastStatsz = time.Time{}
+		s.mu.Unlock()
 	}
 
 	opts := StatszEventOptions{}
