@@ -6240,3 +6240,23 @@ func TestConfigReloadNoPanicOnShutdown(t *testing.T) {
 		wg.Wait()
 	}
 }
+
+func TestReloadOptionsCluster(t *testing.T) {
+	numServers := 5
+	c := createClusterEx(t, false, 0, false, "cluster", numServers)
+	server := c.randomServer()
+	opts := server.getOpts().Clone()
+	for _, s := range c.servers {
+		routeUrl, _ := url.Parse(fmt.Sprintf("nats-route://%s", s.ClusterAddr()))
+		if !urlsAreEqual(routeUrl, opts.Routes[0]) {
+			opts.Routes = append(opts.Routes, routeUrl)
+		}
+	}
+	if server.configuredRoutes() != 1 {
+		t.Fatalf("Expected 1 configured route, found %d", server.configuredRoutes())
+	}
+	require_NoError(t, server.ReloadOptions(opts))
+	if server.configuredRoutes() != 5 {
+		t.Fatalf("Expected 5 configured routes, found %d", server.configuredRoutes())
+	}
+}

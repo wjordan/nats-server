@@ -27,6 +27,7 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"runtime/pprof"
 
@@ -4499,4 +4500,40 @@ func (s *Server) LDMClientByID(id uint64) error {
 	} else {
 		return errors.New("client does not support Lame Duck Mode or is not ready to receive the notification")
 	}
+}
+
+// Solicit all configured routes missing in the current server.
+func (s *Server) solicitMissingRoutes() {
+	s.mu.Lock()
+	routesMap := make(map[url.URL]struct{})
+	for _, ri := range deepCopyURLs(s.getOpts().Routes) {
+		if ri.Path == "/" {
+			ri.Path = ""
+		}
+		// Skip self-route
+		if _, self := s.routesToSelf[ri.Host]; self {
+			continue
+		}
+		routesMap[*ri] = struct{}{}
+	}
+	s.forEachRoute(func(r *client) {
+		u := url.URL{}
+		u = *r.route.url
+		if u.Path == "/" {
+			u.Path = ""
+		}
+		if _, ok := routesMap[u]; ok {
+			upgradeRouteToSolicited(r, r.route.url, Explicit)
+			delete(routesMap, u)
+		}
+	})
+	routes := make([]*url.URL, 0, len(routesMap))
+	for u, _ := range routesMap {
+		routes = append(routes, &u)
+	}
+	if len(routes) > 0 {
+		s.Noticef("Soliciting %d missing routes: %v", len(routes), routes)
+		s.solicitRoutes(routes, s.getOpts().Cluster.PinnedAccounts)
+	}
+	s.mu.Unlock()
 }

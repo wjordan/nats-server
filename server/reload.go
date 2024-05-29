@@ -520,11 +520,6 @@ func (r *routesOption) Apply(server *Server) {
 		}
 	}
 
-	// Add routes.
-	server.mu.Lock()
-	server.solicitRoutes(r.add, server.getOpts().Cluster.PinnedAccounts)
-	server.mu.Unlock()
-
 	server.Noticef("Reloaded: cluster routes")
 }
 
@@ -1067,6 +1062,7 @@ func (s *Server) ReloadOptions(newOpts *Options) error {
 	}
 
 	s.recheckPinnedCerts(curOpts, newOpts)
+	s.solicitMissingRoutes()
 
 	s.mu.Lock()
 	s.configTime = time.Now().UTC()
