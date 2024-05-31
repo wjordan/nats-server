@@ -993,46 +993,14 @@ func (s *Server) sendAsyncInfoToClients(regCli, wsCli bool) {
 // We will check to see if we have configured or are already connected,
 // and if so we will ignore. Otherwise we will attempt to connect.
 func (s *Server) processImplicitRoute(info *Info, routeNoPool bool) {
-	remoteID := info.ID
-
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	// Don't connect to ourself
-	if remoteID == s.info.ID {
-		return
-	}
 
 	// Snapshot server options.
 	opts := s.getOpts()
 
 	// Check if this route already exists
-	accName := info.RouteAccount
-	if accName != _EMPTY_ {
-		// If we don't support pooling/pinned account, bail.
-		if opts.Cluster.PoolSize <= 0 {
-			return
-		}
-		if remotes, ok := s.accRoutes[accName]; ok {
-			if r := remotes[remoteID]; r != nil {
-				return
-			}
-		}
-	} else if _, exists := s.routes[remoteID]; exists {
-		return
-	}
-
-	// Check connected but not yet registered routes
-	for _, c := range s.grTmpClients {
-		if remoteID == c.route.remoteID &&
-			(accName == _EMPTY_ || accName == bytesToString(c.route.accName)) {
-
-			return
-		}
-	}
-
-	// Check if we have this route as a configured route
-	if s.hasThisRouteConfigured(info) {
+	if s.hasRoute(info, opts) {
 		return
 	}
 
@@ -1061,11 +1029,47 @@ func (s *Server) processImplicitRoute(info *Info, routeNoPool bool) {
 	}
 }
 
+// hasRoute returns true if we have configured or are already connected to this route.
+// Server lock is assumed to be held by caller.
+func (s *Server) hasRoute(info *Info, opts *Options) bool {
+	remoteID := info.ID
+	// Don't connect to ourself
+	if remoteID == s.info.ID {
+		return true
+	}
+	accName := info.RouteAccount
+	if accName != _EMPTY_ {
+		// If we don't support pooling/pinned account, bail.
+		if opts.Cluster.PoolSize <= 0 {
+			return true
+		}
+		if remotes, ok := s.accRoutes[accName]; ok {
+			if r := remotes[remoteID]; r != nil {
+				return true
+			}
+		}
+	} else if _, exists := s.routes[remoteID]; exists {
+		return true
+	}
+
+	// Check connected but not yet registered routes
+	for _, c := range s.grTmpClients {
+		if remoteID == c.route.remoteID &&
+			(accName == _EMPTY_ || accName == bytesToString(c.route.accName)) {
+
+			return true
+		}
+	}
+
+	// Check if we have this route as a configured route
+	return s.hasThisRouteConfigured(info, opts)
+}
+
 // hasThisRouteConfigured returns true if info.Host:info.Port is present
 // in the server's opts.Routes, false otherwise.
 // Server lock is assumed to be held by caller.
-func (s *Server) hasThisRouteConfigured(info *Info) bool {
-	routes := s.getOpts().Routes
+func (s *Server) hasThisRouteConfigured(info *Info, opts *Options) bool {
+	routes := opts.Routes
 	if len(routes) == 0 {
 		return false
 	}
