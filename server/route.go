@@ -1007,7 +1007,8 @@ func (s *Server) processImplicitRoute(info *Info, routeNoPool bool) {
 	opts := s.getOpts()
 
 	// Check if this route already exists
-	if accName := info.RouteAccount; accName != _EMPTY_ {
+	accName := info.RouteAccount
+	if accName != _EMPTY_ {
 		// If we don't support pooling/pinned account, bail.
 		if opts.Cluster.PoolSize <= 0 {
 			return
@@ -1020,6 +1021,16 @@ func (s *Server) processImplicitRoute(info *Info, routeNoPool bool) {
 	} else if _, exists := s.routes[remoteID]; exists {
 		return
 	}
+
+	// Check connected but not yet registered routes
+	for _, c := range s.grTmpClients {
+		if remoteID == c.route.remoteID &&
+			(accName == _EMPTY_ || accName == bytesToString(c.route.accName)) {
+
+			return
+		}
+	}
+
 	// Check if we have this route as a configured route
 	if s.hasThisRouteConfigured(info) {
 		return
